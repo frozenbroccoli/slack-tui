@@ -25,6 +25,42 @@ type Conversation struct {
 	Mention bool
 }
 
+// Canvas is a channel or standalone Slack document.
+type Canvas struct {
+	ID        string
+	Title     string
+	URL       string
+	ChannelID string
+}
+
+// CanvasDocument contains a readable Markdown export and a revision fingerprint.
+// Editable is false when conversion would discard rich Slack content.
+type CanvasDocument struct {
+	Canvas
+	Markdown string
+	Revision string
+	Editable bool
+	Warnings []string
+	Sections []CanvasSection
+}
+
+// CanvasSection combines Slack's editable section ID with an export preview,
+// when the export provides a matching identifier.
+type CanvasSection struct {
+	ID       string `json:"id"`
+	Markdown string
+	Editable bool
+}
+
+// CanvasChange is a general Canvas operation. Full replacement requires the
+// revision read by the editor; targeted operations use Slack section IDs.
+type CanvasChange struct {
+	Operation        string
+	SectionID        string
+	Markdown         string
+	ExpectedRevision string
+}
+
 // File is a Slack-hosted attachment on a message (uploaded file or snippet).
 type File struct {
 	ID   string

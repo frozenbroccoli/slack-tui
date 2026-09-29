@@ -49,6 +49,7 @@ func (m Model) paletteItems() []palItem {
 			palItem{"cmd:workspace", components.PaletteItem{Icon: "⇄", Label: "Switch workspace", Hint: m.activeWorkspace, Kind: "cmd"}})
 	}
 	items = append(items,
+		palItem{"cmd:canvases", components.PaletteItem{Icon: "☷", Label: "Canvases", Hint: "browse workspace documents", Kind: "cmd"}},
 		palItem{"cmd:join", components.PaletteItem{Icon: "+", Label: "Browse & join channels", Hint: "channels", Kind: "cmd"}},
 		palItem{"cmd:settings", components.PaletteItem{Icon: "⚙", Label: "Settings", Hint: "appearance · presence", Kind: "cmd"}},
 		palItem{"cmd:statustext", components.PaletteItem{Icon: "✎", Label: "Set status message", Hint: "presence", Kind: "cmd"}},
@@ -152,6 +153,8 @@ func (m *Model) runPalette(id string) tea.Cmd {
 		return m.openChannel(strings.TrimPrefix(id, "dm:"))
 	case id == "cmd:workspace":
 		return m.openWorkspacePicker()
+	case id == "cmd:canvases":
+		return m.openCanvasBrowser(true)
 	case id == "cmd:join":
 		return m.openJoinPicker()
 	case id == "cmd:settings":

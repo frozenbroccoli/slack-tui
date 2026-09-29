@@ -98,7 +98,8 @@ var (
 		"channels:history", "channels:read", "channels:write", "groups:history",
 		"groups:read", "groups:write", "im:history", "im:read", "im:write",
 		"mpim:history", "mpim:read", "mpim:write",
-		"users:read", "chat:write", "files:read", "files:write", "reactions:read", "reactions:write",
+		"users:read", "chat:write", "files:read", "files:write",
+		"canvases:read", "canvases:write", "reactions:read", "reactions:write",
 		"users:write", "dnd:write", "users.profile:write", "search:read",
 	}
 )

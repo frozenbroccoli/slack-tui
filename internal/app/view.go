@@ -93,6 +93,9 @@ func (m Model) View() string {
 	if m.picker.open {
 		frame = m.overlayPicker(frame)
 	}
+	if m.canvas.open {
+		frame = m.overlayCanvas(frame)
+	}
 	if m.confirm.open {
 		frame = m.overlayConfirm(frame)
 	}

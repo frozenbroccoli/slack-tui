@@ -20,6 +20,7 @@ Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 - **Vim-modal** — NORMAL/INSERT modes, `j/k`, `gg/G`, `Ctrl-d/u`, `/` find, `dd` delete
 - **Everything async** — sends are optimistic, channels load in the background, the UI never freezes
 - **Threads, reactions, edits** — open threads, react with any emoji, edit and delete your messages
+- **Canvases** — browse channel and workspace documents, read rendered Markdown, and create/edit through your terminal editor
 - **Autocomplete** — `@` pops handles (mentions actually ping), `:` pops emoji
 - **Fuzzy everything** — command palette (`Ctrl-K`), workspace search (`s`), channel browser & join
 - **Lives in the background** — Socket Mode live unread (self-healing), desktop notifications + terminal bell on mentions and DMs, unread count in the terminal title, `── new ──` divider at first unread
@@ -179,6 +180,8 @@ Prefer to do it by hand, or want to see what `setup` does?
         "chat:write",
         "files:read",
         "files:write",
+        "canvases:read",
+        "canvases:write",
         "reactions:read",
         "reactions:write",
         "users:write",
@@ -237,6 +240,45 @@ Run `slack-tui doctor` to diagnose your setup — it reports which tokens are
 in use (and warns when a stale env var overrides `tokens.json`), checks
 `auth.test`, flags any missing OAuth scopes, and probes Socket Mode. Tokens
 are masked in the output.
+
+In a channel, press `B` or run `/canvas` to browse its Canvases. `/canvases`
+(or the Canvases command in `Ctrl-K`) browses accessible workspace documents.
+Use `/canvas F123` or `/canvas <Canvas URL>` to open a document directly.
+Browsing only reads existing documents.
+
+In the browser, `j/k` selects a document, `Enter` opens it, `/` filters titles,
+`w` switches to the workspace, and `c` returns to the active conversation.
+`n` creates a channel Canvas; `N` creates a standalone Canvas.
+
+Press `?` for the Canvas keymap. In a document, `j/k`, `Ctrl-d/u`, and `g/G` scroll; `/` finds text; `e` edits
+Markdown; `a` appends and `i` prepends; `r` renames; `o` opens its Slack link.
+Editing uses `$VISUAL`, then `$EDITOR`, then `vi`. Saving and exiting the editor
+returns to a draft preview. **Ctrl-S publishes the draft**; `e` edits it again;
+`Esc` asks whether to discard it. Failed saves retain your draft. `R` reloads the latest version and opens the
+editor with merge markers when someone else changed the document; resolve the
+markers before publishing.
+
+`s` finds Canvas sections by text. Select a section with `j/k`; `e` replaces its
+content with new Markdown, `a/i` inserts after/before, and `d` deletes it after
+confirmation. Section editing uses a Markdown preview when the HTML export provides a
+matching section ID and the section can be converted safely; otherwise
+replacement starts with a blank editor. `D` deletes the whole Canvas
+with confirmation. `p` adjusts existing access using `@handle read`,
+`@handle write`, `@handle remove`, or a channel ID. Slack requires the Canvas
+to have already been shared with that target.
+
+Canvas exports are HTML. Common headings, paragraphs, lists, checkboxes, links,
+tables, quotations, and code are converted to Markdown for the terminal reader.
+Rich embeds, images, custom styling, and unknown elements are shown as readable
+fallbacks and disable whole-document replacement. Append/prepend and targeted
+section operations remain available. Whole-document saves check that the
+export has not changed since editing began; Slack does not provide an atomic
+compare-and-save operation, so a concurrent edit after that check can still race.
+This is general Canvas support; task management can be built on it separately.
+
+Existing installs need the `canvases:read` and `canvases:write` user scopes added
+in OAuth & Permissions, followed by `slack-tui login`. Discovery and reading
+exports also use `files:read`. Slack plan and workspace permissions apply.
 
 Both Socket Mode tokens must be present, and the bot has to be invited to the
 channels you care about (`/invite @slack-tui`) — without that, unread badges
@@ -298,6 +340,7 @@ Omarchy, the built-in themes are the only option and nothing changes.
 | `o` | open message links/files |
 | `/` `n/N` · `s` | find in channel · search workspace |
 | `T` | threads inbox (threads you're in) |
+| `B` · `/canvas` · `/canvases` | browse, read, and edit Canvas documents |
 | `]` `[` | next/prev unread |
 | `Ctrl-K` | command palette (fuzzy) |
 | `,` · `?` | settings · help |

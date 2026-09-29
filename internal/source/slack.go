@@ -30,13 +30,15 @@ func IsRateLimited(err error) bool {
 // Slack is a Source backed by the Slack Web API, authenticated with a user
 // token (xoxp). Network calls here run inside tea.Cmds.
 type Slack struct {
-	api        *slack.Client
-	meID       string
-	users      map[string]data.User // resolved lazily, seeded by Load
-	handleIDs  map[string]string    // lowercased @handle → user ID (outgoing mentions)
-	events     chan Event           // Socket Mode stream (nil until StartSocket)
-	stopSocket context.CancelFunc   // tears down the socket (workspace switch)
-	groupDMs   bool                 // include mpims in Load
+	api          *slack.Client
+	userToken    string
+	canvasAPIURL string // empty uses the public Slack API; overridden by tests
+	meID         string
+	users        map[string]data.User // resolved lazily, seeded by Load
+	handleIDs    map[string]string    // lowercased @handle → user ID (outgoing mentions)
+	events       chan Event           // Socket Mode stream (nil until StartSocket)
+	stopSocket   context.CancelFunc   // tears down the socket (workspace switch)
+	groupDMs     bool                 // include mpims in Load
 
 	mu       sync.Mutex          // guards lastRead
 	lastRead map[string]readMark // convID → cached read marker (see lastReadOf)
@@ -59,7 +61,7 @@ const lastReadTTL = 5 * time.Minute
 // unread detection fans out a couple of calls per channel, so bursts are
 // expected and we'd rather wait than drop counts.
 func NewSlack(userToken string) *Slack {
-	return &Slack{api: slack.New(userToken, slack.OptionRetry(3)), users: map[string]data.User{}, handleIDs: map[string]string{}, lastRead: map[string]readMark{}}
+	return &Slack{api: slack.New(userToken, slack.OptionRetry(3)), userToken: userToken, users: map[string]data.User{}, handleIDs: map[string]string{}, lastRead: map[string]readMark{}}
 }
 
 // SetGroupDMs toggles whether Load includes group DMs (mpims). Takes effect on
@@ -1077,4 +1079,5 @@ var ReactionChoices = []string{
 // the app + bot tokens, which never rotate.
 func (s *Slack) SetUserToken(tok string) {
 	s.api = slack.New(tok, slack.OptionRetry(3))
+	s.userToken = tok
 }

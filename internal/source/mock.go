@@ -12,17 +12,19 @@ import (
 // Mock is an in-memory Source backed by the sample workspace. It returns
 // instantly, so the app behaves synchronously when using it.
 type Mock struct {
-	ws        *data.Workspace
-	messages  map[string][]data.Message
-	reacted   map[string]bool // convID/msgID/name → I reacted (for toggling)
-	joinable  []data.Conversation
-	uploads   []UploadRecord
-	UploadErr error // if non-nil, Upload returns this error (still records the call)
-	downloads    []DownloadRecord
-	DownloadErr  error // if non-nil, Download returns this error (still records the call)
-	opened    []string // userIDs passed to OpenDM
-	left      []string // convIDs passed to Leave
-	snoozed   []int    // minutes passed to Snooze
+	ws          *data.Workspace
+	messages    map[string][]data.Message
+	reacted     map[string]bool // convID/msgID/name → I reacted (for toggling)
+	joinable    []data.Conversation
+	uploads     []UploadRecord
+	UploadErr   error // if non-nil, Upload returns this error (still records the call)
+	downloads   []DownloadRecord
+	DownloadErr error    // if non-nil, Download returns this error (still records the call)
+	opened      []string // userIDs passed to OpenDM
+	left        []string // convIDs passed to Leave
+	snoozed     []int    // minutes passed to Snooze
+	canvases    map[string]data.CanvasDocument
+	canvasSeq   int
 }
 
 // UploadRecord captures the arguments of a single Upload call for inspection
@@ -47,7 +49,7 @@ func NewMock() *Mock {
 	for k, v := range ws.Messages {
 		msgs[k] = append([]data.Message(nil), v...)
 	}
-	return &Mock{ws: ws, messages: msgs, reacted: map[string]bool{},
+	return &Mock{ws: ws, messages: msgs, reacted: map[string]bool{}, canvases: map[string]data.CanvasDocument{},
 		joinable: []data.Conversation{
 			{ID: "platform", Type: "channel", Name: "platform", Topic: "infra · deploys · clusters"},
 			{ID: "watercooler", Type: "channel", Name: "watercooler", Topic: "off-topic, but the good kind"},

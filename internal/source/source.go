@@ -59,6 +59,14 @@ type Source interface {
 	// Snooze starts Do-Not-Disturb for the given number of minutes (minimum 1;
 	// callers should pass a positive value).
 	Snooze(minutes int) error
+	// Canvas operations remain independent of application-specific workflows.
+	Canvases(channelID string) ([]data.Canvas, error)
+	ReadCanvas(canvasID string) (data.CanvasDocument, error)
+	CreateCanvas(channelID, title, markdown string) (data.Canvas, error)
+	ChangeCanvas(canvasID string, change data.CanvasChange) error
+	CanvasSections(canvasID, text string) ([]data.CanvasSection, error)
+	CanvasAccess(canvasID, targetID, level string) error
+	DeleteCanvas(canvasID string) error
 }
 
 // Conversation aliases the domain type for the interface signatures above.

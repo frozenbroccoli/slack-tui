@@ -180,6 +180,8 @@ type Model struct {
 	settingsOpen bool
 	settingsSel  int
 
+	canvas canvasState
+
 	statusTextOpen  bool
 	statusTextInput textinput.Model
 
@@ -434,6 +436,7 @@ func NewWith(src source.Source, prefs config.Prefs) Model {
 		pickerInput:     mkInput(),
 		findInput:       mkInput(),
 		attachInput:     mkInput(),
+		canvas:          canvasState{input: mkInput(), cache: &canvasRenderCache{}},
 		newMark:         map[string]string{},
 		pendingUnread:   map[string]int{},
 		readSeqOf:       map[string]int{},
@@ -1021,6 +1024,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sl.SetUserToken(msg.toks.User)
 		}
 		return m, nil
+	case canvasResult:
+		return m.handleCanvasResult(msg)
+	case canvasEditorResult:
+		return m.handleCanvasEditorResult(msg)
 	case dmPollMsg:
 		// The fast round covers only the recently-used head; the dormant tail
 		// rides the slower dmTailPollMsg so this stays inside the budget.
@@ -1264,11 +1271,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Ctrl-K toggles the palette from any mode (Cmd never reaches a terminal).
 		if msg.String() == "ctrl+k" {
+			if m.canvas.open && m.canvas.busy && m.canvas.draft != nil {
+				return m, nil
+			}
 			if m.paletteOpen {
 				m.closePalette()
 				return m, nil
 			}
 			m.closePicker() // the palette supersedes any open picker
+			m.closeCanvas()
 			return m, m.openPalette()
 		}
 		if m.helpOpen {
@@ -1294,6 +1305,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.paletteOpen {
 			return m.paletteKey(msg)
+		}
+		if m.canvas.open {
+			return m.canvasKey(msg)
 		}
 		if msg.Paste {
 			if paths := parseDroppedPaths(string(msg.Runes)); len(paths) > 0 {
@@ -1326,6 +1340,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.paletteQuery, cmd = m.paletteQuery.Update(msg)
 		return m, cmd
 	}
+	if m.canvas.open && m.canvas.prompt != "" {
+		var cmd tea.Cmd
+		m.canvas.input, cmd = m.canvas.input.Update(msg)
+		return m, cmd
+	}
+
 	if m.insert {
 		var cmd tea.Cmd
 		if m.focus == focusThread {
@@ -1386,6 +1406,9 @@ func (m Model) normalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.quit()
 	case "ctrl+r": // manual refresh of the active channel + open thread
 		return m, m.refresh()
+	case "B": // Canvas browser for the active conversation
+		cmd := m.openCanvasBrowser(false)
+		return m, cmd
 	case ",": // open the settings overlay
 		m.openSettings()
 		return m, nil

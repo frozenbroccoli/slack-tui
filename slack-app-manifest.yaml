@@ -68,6 +68,8 @@ oauth_config:
       - chat:write
       - files:read            # download files
       - files:write           # attach/upload files
+      - canvases:read         # read Canvas sections
+      - canvases:write        # create and edit Canvases
       - reactions:read
       - reactions:write       # add/remove reactions (`a`)
       - users:write           # set presence (active/away)

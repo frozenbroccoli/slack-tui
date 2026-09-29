@@ -33,6 +33,8 @@ var featureFor = map[string]string{
 	"chat:write":          "sending messages",
 	"files:read":          "downloading files",
 	"files:write":         "attaching files",
+	"canvases:read":       "reading Canvas sections",
+	"canvases:write":      "creating and editing Canvases",
 }
 
 // httpClient is the client used for the network checks; a var so tests could

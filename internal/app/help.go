@@ -30,6 +30,7 @@ var helpRows = []helpRow{
 	{"/ · n / N", "find in channel · next/prev"},
 	{"s", "search the workspace"},
 	{"T", "threads inbox"},
+	{"B · /canvas", "browse and edit channel Canvases"},
 	{"y", "yank message to clipboard"},
 	{"S", "save file(s) to ~/Downloads"},
 	{"drag", "select text · copies on release"},
@@ -67,7 +68,11 @@ func (m Model) overlayHelp(frame string) string {
 		theme.FillBg(lipgloss.NewStyle().Foreground(p.Fg).Bold(true).Render(" keys"), inner, p.Panel),
 		theme.FillBg("", inner, p.Panel),
 	}
-	for _, r := range helpRows {
+	rows := helpRows
+	if m.canvas.open {
+		rows = canvasHelpRows
+	}
+	for _, r := range rows {
 		line := " " + keyStyle.Render(r.keys) + descStyle.Render(r.desc)
 		body = append(body, theme.FillBg(line, inner, p.Panel))
 	}
@@ -89,4 +94,23 @@ func (m Model) overlayHelp(frame string) string {
 		y = 1
 	}
 	return overlay(frame, strings.Join(box, "\n"), x, y)
+}
+
+var canvasHelpRows = []helpRow{
+	{"j/k · ctrl+d/u", "select or scroll"},
+	{"g / G", "document top / bottom"},
+	{"enter · /", "open · filter or find"},
+	{"w / c", "workspace / channel browser"},
+	{"n / N", "new channel / standalone Canvas"},
+	{"e", "edit in terminal editor"},
+	{"a / i", "append / prepend content"},
+	{"ctrl+s", "publish draft preview"},
+	{"r", "rename Canvas"},
+	{"s", "find sections by text"},
+	{"section e/a/i", "replace / insert after / before"},
+	{"section d", "delete selected section"},
+	{"p", "adjust existing access"},
+	{"o", "open in Slack browser"},
+	{"D", "delete whole Canvas"},
+	{"R · esc", "refresh · back / discard draft"},
 }

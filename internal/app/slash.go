@@ -73,9 +73,18 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 	case "search":
 		m.draft.SetValue("")
 		return m.slashSearch(rest), true
+	case "canvas":
+		m.draft.SetValue("")
+		if rest != "" {
+			return m.openCanvasReference(rest), true
+		}
+		return m.openCanvasBrowser(false), true
+	case "canvases":
+		m.draft.SetValue("")
+		return m.openCanvasBrowser(true), true
 	default:
 		m.draft.SetValue("")
-		return m.flash(fmt.Errorf("/%s isn't supported — try /shrug /me /away /active /dnd /status /dm /leave /search", cmd)), true
+		return m.flash(fmt.Errorf("/%s isn't supported — try /shrug /me /away /active /dnd /status /dm /leave /search /canvas /canvases", cmd)), true
 	}
 }
 
