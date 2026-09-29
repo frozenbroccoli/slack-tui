@@ -118,14 +118,16 @@ type Model struct {
 	hidden      map[string]int // conv IDs hidden from the sidebar → unread baseline captured at hide time
 	myStatus    string
 
-	activeID     string
-	focus        string
-	insert       bool
-	sideSel      int // flat index into sidebar items
-	msgSel       int
-	msgExtra     int // extra line scroll within the message pane (for tall messages)
-	threadRootID string
-	threadSel    int
+	activeID      string
+	focus         string
+	insert        bool
+	sideSel       int // flat index into sidebar items
+	sidePinID     string
+	sidePinOffset int // position within the active conversation’s section
+	msgSel        int
+	msgExtra      int // extra line scroll within the message pane (for tall messages)
+	threadRootID  string
+	threadSel     int
 
 	draft       textarea.Model
 	threadDraft textarea.Model
@@ -487,7 +489,31 @@ func (m Model) sideItems() []components.SideItem {
 	for id := range m.hidden {
 		hidden[id] = true
 	}
-	return components.BuildSideItems(m.ws, m.meta, hidden)
+	items := components.BuildSideItems(m.ws, m.meta, hidden)
+	start := 0
+	for i, item := range items {
+		if item.Header {
+			start = i + 1
+			continue
+		}
+		if item.Conv.ID != m.sidePinID {
+			continue
+		}
+		end := i + 1
+		for end < len(items) && !items[end].Header {
+			end++
+		}
+		target := min(start+m.sidePinOffset, end-1)
+		row := items[i]
+		if target < i {
+			copy(items[target+1:i+1], items[target:i])
+		} else {
+			copy(items[i:target], items[i+1:target+1])
+		}
+		items[target] = row
+		break
+	}
+	return items
 }
 
 func (m Model) selectable() []int {
@@ -577,6 +603,18 @@ func (m *Model) ensureHistory(id string) {
 }
 
 func (m *Model) openChannel(id string) tea.Cmd {
+	if id != m.activeID || m.sidePinID == "" {
+		m.sidePinID = ""
+		start := 0
+		for i, item := range m.sideItems() {
+			if item.Header {
+				start = i + 1
+			} else if item.Conv.ID == id {
+				m.sidePinID, m.sidePinOffset = id, i-start
+				break
+			}
+		}
+	}
 	if id != m.activeID { // park the unsent draft; restore the target's
 		m.drafts[m.activeID] = m.draft.Value()
 		m.draft.SetValue(m.drafts[id])
@@ -983,7 +1021,27 @@ func (m *Model) eachRootMsg(id string, fn func(*data.Message)) {
 
 // ── update ──────────────────────────────────────────────────────────────────
 
+// Preserve cursor identity when background activity changes the sidebar order.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	selected := ""
+	items := m.sideItems()
+	if m.sideSel >= 0 && m.sideSel < len(items) && !items[m.sideSel].Header {
+		selected = items[m.sideSel].Conv.ID
+	}
+	next, cmd := m.update(msg)
+	n := next.(Model)
+	if _, key := msg.(tea.KeyMsg); !key && selected != "" && n.activeID == m.activeID {
+		for i, item := range n.sideItems() {
+			if !item.Header && item.Conv.ID == selected {
+				n.sideSel = i
+				break
+			}
+		}
+	}
+	return n, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/kurenn/slack-tui/internal/data"
 	"github.com/kurenn/slack-tui/internal/theme"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // SideItem is one flat sidebar entry: a section header or a conversation row.
@@ -23,20 +23,39 @@ type SideItem struct {
 // Conversations whose ID appears in hidden (value true) are omitted; section
 // headers are always included.
 func BuildSideItems(ws *data.Workspace, meta map[string]Meta, hidden map[string]bool) []SideItem {
-	items := []SideItem{{Header: true, Label: "── channels ──"}}
-	for _, c := range ws.Channels {
-		if hidden[c.ID] {
-			continue
+	items := make([]SideItem, 0, len(ws.Channels)+len(ws.DMs)+2)
+	appendSection := func(label string, conversations []data.Conversation) {
+		items = append(items, SideItem{Header: true, Label: label})
+		start := len(items)
+		var counts [3]int
+		rank := func(c data.Conversation) int {
+			if c.Mention {
+				return 0
+			}
+			if c.Unread > 0 {
+				return 1
+			}
+			return 2
 		}
-		items = append(items, SideItem{Conv: applyMeta(c, meta)})
-	}
-	items = append(items, SideItem{Header: true, Label: "── direct messages ──"})
-	for _, c := range ws.DMs {
-		if hidden[c.ID] {
-			continue
+		for _, c := range conversations {
+			if !hidden[c.ID] {
+				counts[rank(applyMeta(c, meta))]++
+			}
 		}
-		items = append(items, SideItem{Conv: applyMeta(c, meta)})
+		items = append(items, make([]SideItem, counts[0]+counts[1]+counts[2])...)
+		positions := [3]int{start, start + counts[0], start + counts[0] + counts[1]}
+		for _, c := range conversations {
+			if hidden[c.ID] {
+				continue
+			}
+			c = applyMeta(c, meta)
+			r := rank(c)
+			items[positions[r]] = SideItem{Conv: c}
+			positions[r]++
+		}
 	}
+	appendSection("── channels ──", ws.Channels)
+	appendSection("── direct messages ──", ws.DMs)
 	return items
 }
 
