@@ -40,7 +40,7 @@ type Slack struct {
 	stopSocket   context.CancelFunc   // tears down the socket (workspace switch)
 	groupDMs     bool                 // include mpims in Load
 
-	mu       sync.Mutex          // guards lastRead
+	mu       sync.Mutex          // guards lastRead and groupDMs
 	lastRead map[string]readMark // convID → cached read marker (see lastReadOf)
 }
 
@@ -66,7 +66,17 @@ func NewSlack(userToken string) *Slack {
 
 // SetGroupDMs toggles whether Load includes group DMs (mpims). Takes effect on
 // the next Load.
-func (s *Slack) SetGroupDMs(on bool) { s.groupDMs = on }
+func (s *Slack) SetGroupDMs(on bool) {
+	s.mu.Lock()
+	s.groupDMs = on
+	s.mu.Unlock()
+}
+
+func (s *Slack) includeGroupDMs() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.groupDMs
+}
 
 // Load fetches identity, users, channels and DMs.
 func (s *Slack) Load() (*data.Workspace, error) {
@@ -91,7 +101,7 @@ func (s *Slack) Load() (*data.Workspace, error) {
 	// Real channels (the user is a member of) and 1:1 DMs; group DMs (mpims)
 	// join the DM section when the Group DMs preference is on.
 	types := []string{"public_channel", "private_channel", "im"}
-	if s.groupDMs {
+	if s.includeGroupDMs() {
 		types = append(types, "mpim")
 	}
 	var channels, dms []data.Conversation
@@ -152,6 +162,38 @@ func (s *Slack) Load() (*data.Workspace, error) {
 	}
 	ws.Users[s.meID] = me
 	return ws, nil
+}
+
+// RefreshDMs discovers conversations created after the startup snapshot.
+// Names are resolved by the app from its workspace user cache.
+func (s *Slack) RefreshDMs() ([]data.Conversation, error) {
+	ctx, cancel := readCtx()
+	defer cancel()
+	types := []string{"im"}
+	if s.includeGroupDMs() {
+		types = append(types, "mpim")
+	}
+	var out []data.Conversation
+	cursor := ""
+	for {
+		convs, next, err := s.api.GetConversationsContext(ctx, &slack.GetConversationsParameters{Types: types, ExcludeArchived: true, Limit: 200, Cursor: cursor})
+		if err != nil {
+			return nil, fmt.Errorf("DM discovery: %w", err)
+		}
+		for _, c := range convs {
+			switch {
+			case c.IsIM && c.User != "" && !c.IsUserDeleted:
+				out = append(out, data.Conversation{ID: c.ID, Type: "dm", UserID: c.User, Name: c.User})
+			case c.IsMpIM:
+				out = append(out, data.Conversation{ID: c.ID, Type: "dm", Name: mpimName(c.Name)})
+			}
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	return out, nil
 }
 
 // toUser maps a Slack user to ours, preferring display/real name.
@@ -222,9 +264,8 @@ func (s *Slack) unreadFor(ctx context.Context, convID string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if lastRead == "" {
-		return 0, nil // no read marker (never opened) — treat as read, not a wall of dots
-	}
+	// A missing cursor does not mean read: first incoming DMs can have no
+	// cursor yet. Count the latest page until opening establishes a marker.
 	h, err := s.api.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{
 		ChannelID: convID, Oldest: lastRead, Inclusive: false, Limit: 30,
 	})

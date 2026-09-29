@@ -351,3 +351,50 @@ func (m *Model) applyWorkspace(msg wsMsg) tea.Cmd {
 	m.sideSel = m.flatIndexOf(m.activeID)
 	return m.titleCmd()
 }
+
+// Discovery runs separately from history polling; conversations.list has its
+// own rate budget and avoids reloading all users and channels every minute.
+func (m Model) discoverDMsCmd() tea.Cmd {
+	src, ok := m.src.(interface {
+		RefreshDMs() ([]data.Conversation, error)
+	})
+	if !ok {
+		return nil
+	}
+	return func() tea.Msg { convs, err := src.RefreshDMs(); return dmDiscoveredMsg{convs, err} }
+}
+
+func (m *Model) applyDiscoveredDMs(msg dmDiscoveredMsg) tea.Cmd {
+	if msg.err != nil {
+		return m.flash(msg.err)
+	}
+	selectedID := m.activeID
+	items := m.sideItems()
+	if m.sideSel >= 0 && m.sideSel < len(items) && !items[m.sideSel].Header {
+		selectedID = items[m.sideSel].Conv.ID
+	}
+	known := map[string]bool{}
+	for _, d := range m.ws.DMs {
+		known[d.ID] = true
+	}
+	var added []string
+	for _, d := range msg.convs {
+		if d.ID == "" || known[d.ID] || (d.UserID == "" && !m.prefs.GroupDMs) {
+			continue
+		}
+		known[d.ID] = true
+		if u, ok := m.ws.Users[d.UserID]; ok && u.Name != "" {
+			d.Name = u.Name
+		}
+		m.ws.DMs = append(m.ws.DMs, d)
+		m.meta[d.ID] = components.Meta{}
+		m.touchRecent(d.ID)
+		added = append(added, d.ID)
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	sort.Slice(m.ws.DMs, func(i, j int) bool { return m.ws.DMs[i].Name < m.ws.DMs[j].Name })
+	m.sideSel = m.flatIndexOf(selectedID)
+	return m.unreadCmd(added)
+}

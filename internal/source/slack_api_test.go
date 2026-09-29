@@ -245,20 +245,58 @@ func TestSlackUnreadCountsFilteredMessages(t *testing.T) {
 	}
 }
 
-// TestSlackUnreadNoMarkerSkipsHistory: a conversation never opened has no
-// last_read marker — treated as read (0), and history isn't even fetched.
-func TestSlackUnreadNoMarkerSkipsHistory(t *testing.T) {
+// First messages must be unread even before Slack has a last_read cursor.
+func TestSlackUnreadWithoutMarkerCountsIncoming(t *testing.T) {
 	fk := fkNewServer(t)
 	s := fkClient(fk)
+	s.meID = "U1"
 	fk.on("conversations.info", func(w http.ResponseWriter, r *http.Request) {
-		fkJSON(w, fkOK(map[string]any{"channel": map[string]any{"id": "C1", "last_read": ""}}))
+		fkJSON(w, fkOK(map[string]any{"channel": map[string]any{"id": "D1"}}))
 	})
 	fk.on("conversations.history", func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("history should not be fetched when there is no read marker")
+		if r.PostForm.Get("oldest") != "" {
+			t.Errorf("unexpected oldest: %s", r.PostForm.Get("oldest"))
+		}
+		fkJSON(w, fkOK(map[string]any{"messages": []map[string]any{
+			{"user": "U2", "ts": "1700000001.000000", "text": "hello"},
+			{"user": "U1", "ts": "1700000002.000000", "text": "mine"},
+			{"user": "U2", "subtype": "channel_join", "ts": "1700000003.000000"},
+		}}))
 	})
-	got, err := s.Unread("C1")
-	if err != nil || got != 0 {
-		t.Fatalf("Unread = (%d, %v), want (0, nil)", got, err)
+	got, err := s.Unread("D1")
+	if err != nil || got != 1 {
+		t.Fatalf("Unread = (%d, %v), want (1, nil)", got, err)
+	}
+}
+
+func TestSlackRefreshDMsPaginatesAndFilters(t *testing.T) {
+	fk := fkNewServer(t)
+	s := fkClient(fk)
+	s.SetGroupDMs(true)
+	fk.on("conversations.list", func(w http.ResponseWriter, r *http.Request) {
+		if r.Form.Get("types") != "im,mpim" {
+			t.Errorf("types = %q", r.Form.Get("types"))
+		}
+		if r.Form.Get("cursor") == "" {
+			fkJSON(w, fkOK(map[string]any{"channels": []map[string]any{
+				{"id": "D1", "is_im": true, "user": "U2"},
+				{"id": "DDELETED", "is_im": true, "user": "U3", "is_user_deleted": true},
+			}, "response_metadata": map[string]any{"next_cursor": "next"}}))
+		} else {
+			fkJSON(w, fkOK(map[string]any{"channels": []map[string]any{
+				{"id": "G1", "is_mpim": true, "name": "mpdm-ada--lin-1"},
+			}, "response_metadata": map[string]any{"next_cursor": ""}}))
+		}
+	})
+	convs, err := s.RefreshDMs()
+	if err != nil || len(convs) != 2 {
+		t.Fatalf("discovery = %v, %v", convs, err)
+	}
+	if convs[0].ID != "D1" || convs[1].ID != "G1" {
+		t.Fatalf("wrong conversations: %v", convs)
+	}
+	if fk.hitCount("conversations.list") != 2 {
+		t.Fatal("pagination not followed")
 	}
 }
 

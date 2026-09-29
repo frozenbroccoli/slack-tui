@@ -307,8 +307,16 @@ count in the window title still fire.
 Without Socket Mode they arrive on the unread poll rather than instantly: a DM
 notifies as soon as its unread count grows, and a channel only when the new
 messages actually mention you (checked with one history fetch, for at most three
-channels per round — unread polling is rate-limit sensitive). With Socket Mode
-they're immediate.
+channels per round — unread polling is rate-limit sensitive). Channel events
+received through Socket Mode notify immediately; human DMs use polling.
+
+DM unread counts refresh by polling. Every 25 seconds the client checks up to
+five recently opened DMs and five older DMs in rotation. With many older DMs,
+a complete sweep takes multiple rounds. Newly created DM conversations are
+discovered every minute and checked immediately. A conversation without a
+read marker counts incoming messages from its latest history page (up to 30);
+opening it establishes the read marker. Failed unread polls show an error
+banner and retain the last known count.
 
 Turn them off in settings (`,`) → *Notifications*. The setting reads
 "Unavailable" rather than "On" when the machine has no notifier, so a silent

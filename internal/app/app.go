@@ -464,9 +464,9 @@ func (m Model) Init() tea.Cmd {
 		} else {
 			cmds = append(cmds, chanPollTick()) // no Socket Mode: poll channel unread instead
 		}
-		cmds = append(cmds, dmPollTick())       // periodic DM unread (Socket Mode can't see DMs)
-		cmds = append(cmds, presencePollTick()) // periodic presence refresh for DM partners
-		cmds = append(cmds, m.presenceCmd())    // immediate first fetch so dots are right at startup
+		cmds = append(cmds, dmPollTick(), dmDiscoveryTick()) // periodic DM unread (Socket Mode can't see DMs)
+		cmds = append(cmds, presencePollTick())              // periodic presence refresh for DM partners
+		cmds = append(cmds, m.presenceCmd())                 // immediate first fetch so dots are right at startup
 		// Immediate unread fetch so sidebar dots appear right after launch
 		// instead of waiting for the first poll tick (Load no longer blocks on it).
 		cmds = append(cmds, m.unreadCmd(m.chanIDs()), m.unreadCmd(m.dmHeadIDs()), m.unreadCmd(m.dmTailIDs()))
@@ -1028,9 +1028,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleCanvasResult(msg)
 	case canvasEditorResult:
 		return m.handleCanvasEditorResult(msg)
+	case dmDiscoveryMsg:
+		return m, tea.Batch(dmDiscoveryTick(), m.discoverDMsCmd())
+	case dmDiscoveredMsg:
+		return m, m.applyDiscoveredDMs(msg)
 	case dmPollMsg:
-		// The fast round covers only the recently-used head; the dormant tail
-		// rides the slower dmTailPollMsg so this stays inside the budget.
+		// Recent and rotating DM batches each spend half the request budget.
 		return m, tea.Batch(dmPollTick(), m.unreadCmd(m.dmHeadIDs()))
 	case dmTailPollMsg:
 		cmd := m.unreadCmd(m.dmTailIDs()) // reads the current rotation window…
@@ -1054,6 +1057,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Alerts are computed before the counts are written, since "did this
 		// conversation grow" is a comparison against the previous round.
 		alerts := m.pollAlerts(msg.counts, msg.seq)
+		if msg.err != nil {
+			alerts = append(alerts, m.flash(msg.err))
+		}
 		for id, n := range msg.counts { // only ids actually fetched this round
 			if id == m.activeID {
 				continue

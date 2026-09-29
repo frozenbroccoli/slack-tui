@@ -31,16 +31,19 @@ import (
 // a stale badge on a channel nobody is looking at is the cheapest thing to give
 // up, and far cheaper than rate-limiting the whole sweep into uselessness.
 //
-//	DM head (10)          25s   24.0/min
-//	DM dormant tail (5)  120s    2.5/min
+//	DM head (5)           25s   12.0/min
+//	DM rotating tail (5)  25s   12.0/min
 //	channels (12)        120s    6.0/min
 //	active conversation    8s    7.5/min
 //	presence              60s    1.0/min
-//	                          ≈ 41/min
+//	                          ≈ 38.5/min
 const dmPollInterval = 25 * time.Second
 
-// dmTailPollInterval refreshes the dormant DMs the fast round skips.
-const dmTailPollInterval = 120 * time.Second
+// dmTailPollInterval walks older DMs at the same cadence as recent ones.
+// Splitting the ten-request budget equally keeps all DMs making progress.
+const dmTailPollInterval = dmPollInterval
+
+const dmDiscoveryInterval = time.Minute
 
 // chanPollInterval refreshes channel unread counts when Socket Mode isn't
 // running (user token only) — without it the sidebar badges would freeze at
@@ -53,6 +56,11 @@ const presencePollInterval = 60 * time.Second
 
 type (
 	dmPollMsg       struct{}
+	dmDiscoveryMsg  struct{}
+	dmDiscoveredMsg struct {
+		convs []data.Conversation
+		err   error
+	}
 	dmTailPollMsg   struct{}
 	chanPollMsg     struct{}
 	presencePollMsg struct{}
@@ -60,6 +68,7 @@ type (
 	// rate-limit abort returns a partial map; absent ids stay untouched).
 	unreadMsg struct {
 		counts map[string]int
+		err    error
 		seq    int // m.readSeq when the poll fired; results for convs read since are stale
 	}
 	// presenceUpdateMsg carries freshly fetched presence statuses for DM
@@ -67,6 +76,10 @@ type (
 	// pushes the user's OWN presence and carries only an error).
 	presenceUpdateMsg struct{ statuses map[string]string }
 )
+
+func dmDiscoveryTick() tea.Cmd {
+	return tea.Tick(dmDiscoveryInterval, func(time.Time) tea.Msg { return dmDiscoveryMsg{} })
+}
 
 func dmTailPollTick() tea.Cmd {
 	return tea.Tick(dmTailPollInterval, func(time.Time) tea.Msg { return dmTailPollMsg{} })
@@ -129,11 +142,10 @@ func lastRealTS(msgs []data.Message) string {
 // DM unread can't be pushed over Socket Mode, so it's polled. Fanning out one
 // conversations.history call per DM doesn't scale: a large DM list (100s) blows
 // Slack's per-app history rate limit in a single round, 429s, aborts mid-sweep,
-// and leaves most counts stale. So poll a bounded subset each tick — the most
-// recently-used DMs every time (dmPollHead), plus a rotating window of the
-// dormant long tail (dmPollTail) so those still refresh over a few minutes.
+// and leaves most counts stale. Poll five recently-used DMs and rotate five
+// older DMs at the same 25-second cadence to keep every thread moving.
 const (
-	dmPollHead = 10
+	dmPollHead = 5
 	dmPollTail = 5
 	// Channels get the same treatment DMs got in v0.5.2: the ones you actually
 	// use every round, the rest on a rotation.
@@ -152,7 +164,7 @@ func (m Model) dmHeadIDs() []string {
 	return ordered[:dmPollHead]
 }
 
-// dmTailIDs is the rotating window over dormant DMs, on the slow round.
+// dmTailIDs is the rotating window over older DMs, refreshed every 25 seconds.
 func (m Model) dmTailIDs() []string {
 	ordered := m.dmsByRecency()
 	if len(ordered) <= dmPollHead {
@@ -260,6 +272,7 @@ func (m Model) unreadCmd(ids []string) tea.Cmd {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var limited atomic.Bool
+		var firstErr error
 		for _, id := range ids {
 			wg.Add(1)
 			go func(id string) {
@@ -271,6 +284,11 @@ func (m Model) unreadCmd(ids []string) tea.Cmd {
 				}
 				n, err := src.Unread(id)
 				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("unread refresh for %s failed: %w", id, err)
+					}
+					mu.Unlock()
 					if source.IsRateLimited(err) {
 						limited.Store(true) // back off; finish this round with what we have
 					}
@@ -282,7 +300,7 @@ func (m Model) unreadCmd(ids []string) tea.Cmd {
 			}(id)
 		}
 		wg.Wait()
-		return unreadMsg{counts: counts, seq: seq}
+		return unreadMsg{counts: counts, seq: seq, err: firstErr}
 	}
 }
 
